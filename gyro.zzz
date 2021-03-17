@@ -10,3 +10,4 @@ pkgs:
       README.md
       build.zig
       src/*.zig
+      src/json/*.zig
