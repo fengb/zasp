@@ -1,6 +1,7 @@
 const std = @import("std");
 const json_std = @import("json/std.zig");
 
+const log = std.log.scoped(.zasp);
 const debug_buffer = std.builtin.mode == .Debug;
 
 pub fn stream(reader: anytype) Stream(@TypeOf(reader)) {
@@ -40,9 +41,7 @@ pub fn Stream(comptime Reader: type) type {
             wrong_element: struct { wanted: ElementType, actual: ElementType },
         };
 
-        const ElementType = enum {
-            Object, Array, String, Number, Boolean, Null
-        };
+        const ElementType = enum { Object, Array, String, Number, Boolean, Null };
 
         const Error = Reader.Error || json_std.StreamingParser.Error || error{
             WrongElementType,
@@ -58,7 +57,7 @@ pub fn Stream(comptime Reader: type) type {
             stack_level: u8,
 
             fn init(ctx: *Self) Error!?Element {
-                ctx.assertState(.{ .ValueBegin, .ValueBeginNoClosing, .TopLevelBegin });
+                ctx.assertState(&.{ .ValueBegin, .ValueBeginNoClosing, .TopLevelBegin });
 
                 const start_state = ctx.parser.state;
 
@@ -99,7 +98,7 @@ pub fn Stream(comptime Reader: type) type {
 
             pub fn boolean(self: Element) Error!bool {
                 try self.validateType(.Boolean);
-                self.ctx.assertState(.{ .TrueLiteral1, .FalseLiteral1 });
+                self.ctx.assertState(&.{ .TrueLiteral1, .FalseLiteral1 });
 
                 switch ((try self.finalizeToken()).?) {
                     .True => return true,
@@ -401,7 +400,7 @@ pub fn Stream(comptime Reader: type) type {
 
             fn checkOptional(self: Element) !bool {
                 if (self.kind != .Null) return false;
-                self.ctx.assertState(.{.NullLiteral1});
+                self.ctx.assertState(&.{.NullLiteral1});
 
                 _ = try self.finalizeToken();
                 return true;
@@ -495,8 +494,8 @@ pub fn Stream(comptime Reader: type) type {
             return self._root.?;
         }
 
-        fn assertState(ctx: *Self, valids: anytype) void {
-            inline for (valids) |valid| {
+        fn assertState(ctx: *Self, valids: []const json_std.StreamingParser.State) void {
+            for (valids) |valid| {
                 if (ctx.parser.state == valid) {
                     return;
                 }
@@ -506,14 +505,14 @@ pub fn Stream(comptime Reader: type) type {
 
         fn assert(ctx: *Self, cond: bool) void {
             if (!cond) {
-                std.debug.print("{}", ctx.debugInfo());
+                log.err("{}", ctx.debugInfo());
                 unreachable;
             }
         }
 
         fn assertFailure(ctx: *Self, comptime fmt: []const u8, args: anytype) void {
-            std.debug.print("{}", .{ctx.debugInfo()});
             if (std.debug.runtime_safety) {
+                log.err("{}", .{ctx.debugInfo()});
                 var buffer: [0x1000]u8 = undefined;
                 @panic(std.fmt.bufPrint(&buffer, fmt, args) catch &buffer);
             }
