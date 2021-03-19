@@ -1,5 +1,6 @@
 const std = @import("std");
 const json_std = @import("json/std.zig");
+pub const path = @import("json/path.zig");
 
 const log = std.log.scoped(.zasp);
 const debug_buffer = std.builtin.mode == .Debug;
@@ -505,7 +506,7 @@ pub fn Stream(comptime Reader: type) type {
 
         fn assert(ctx: *Self, cond: bool) void {
             if (!cond) {
-                log.err("{}", ctx.debugInfo());
+                //log.err("{}", ctx.debugInfo());
                 unreachable;
             }
         }
@@ -1101,4 +1102,8 @@ test "finalizeToken on number" {
     expectEqual(try second.finalizeToken(), null);
     expectEqual(try second.finalizeToken(), null);
     expectEqual(try second.finalizeToken(), null);
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }
