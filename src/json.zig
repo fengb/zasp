@@ -143,7 +143,7 @@ pub fn Stream(comptime Reader: type) type {
 
                         return try std.fmt.parseFloat(T, try self.numberBuffer(&buffer));
                     },
-                    else => @compileError("Unsupported number type"),
+                    else => @compileError("Unsupported number type '" ++ @typeName(T) ++ "'"),
                 }
             }
 
