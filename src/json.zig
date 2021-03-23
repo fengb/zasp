@@ -246,6 +246,14 @@ pub fn Stream(comptime Reader: type) type {
                 return StringReader{ .context = self };
             }
 
+            pub fn optionalStringReader(self: Element) Error!?StringReader {
+                if (try self.checkOptional()) {
+                    return null;
+                } else {
+                    return try self.stringReader();
+                }
+            }
+
             pub fn optionalStringBuffer(self: Element, buffer: []u8) (Error || error{NoSpaceLeft})!?[]u8 {
                 if (try self.checkOptional()) {
                     return null;
