@@ -514,14 +514,14 @@ pub fn Stream(comptime Reader: type) type {
 
         fn assert(ctx: *Self, cond: bool) void {
             if (!cond) {
-                //log.err("{}", ctx.debugInfo());
+                std.debug.print("{}", ctx.debugInfo());
                 unreachable;
             }
         }
 
         fn assertFailure(ctx: *Self, comptime fmt: []const u8, args: anytype) void {
             if (std.debug.runtime_safety) {
-                log.err("{}", .{ctx.debugInfo()});
+                std.debug.print("{}", ctx.debugInfo());
                 var buffer: [0x1000]u8 = undefined;
                 @panic(std.fmt.bufPrint(&buffer, fmt, args) catch &buffer);
             }
