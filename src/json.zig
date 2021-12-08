@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+const util = @import("util.zig");
 pub const path = @import("json/path.zig");
 
 const log = std.log.scoped(.zasp);
@@ -120,11 +121,11 @@ pub fn Stream(comptime Reader: type) type {
                 return try path.match(self, T);
             }
 
-            pub fn pathMatchAlloc(self: Element, allocator: *std.mem.Allocator, comptime T: type) !T {
+            pub fn pathMatchAlloc(self: Element, allocator: util.Allocator, comptime T: type) !T {
                 return try path.matchAlloc(allocator, self, T);
             }
 
-            pub fn pathMatchFree(_: Element, allocator: *std.mem.Allocator, value: anytype) void {
+            pub fn pathMatchFree(_: Element, allocator: util.Allocator, value: anytype) void {
                 return try path.freeMatch(allocator, value);
             }
 
