@@ -544,12 +544,13 @@ pub fn Stream(comptime Reader: type) type {
             }
         }
 
-        fn assertFailure(ctx: *Self, comptime fmt: []const u8, args: anytype) void {
+        fn assertFailure(ctx: *Self, comptime fmt: []const u8, args: anytype) noreturn {
             if (std.debug.runtime_safety) {
                 std.debug.print("{}\n", .{ctx.debugInfo()});
                 var buffer: [0x1000]u8 = undefined;
                 @panic(std.fmt.bufPrint(&buffer, fmt, args) catch &buffer);
             }
+            unreachable;
         }
 
         const DebugInfo = struct {
