@@ -37,10 +37,13 @@ pub fn Stream(comptime Reader: type) type {
         reader: Reader,
         parser: std.json.StreamingParser,
 
+        // Helper for determining parse state validity
         element_number: usize = 0,
+        // TODO: add more reasons for failure (parse error, etc)
         parse_failure: ?ParseFailure = null,
 
         _root: ?Element = null,
+        // Unread bytes inside `back_fifo`. If this is 0, the following call to nextByte() will read in a new block (16 bytes)
         _back_cursor: usize = 0,
         _back_fifo: std.fifo.LinearFifo(u8, .{ .Static = 0x1000 }) = std.fifo.LinearFifo(u8, .{ .Static = 0x1000 }).init(),
 
