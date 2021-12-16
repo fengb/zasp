@@ -41,7 +41,7 @@ pub fn Stream(comptime Reader: type) type {
         parse_failure: ?ParseFailure = null,
 
         _root: ?Element = null,
-        _back_cursor: u8 = 0,
+        _back_cursor: usize = 0,
         _back_fifo: std.fifo.LinearFifo(u8, .{ .Static = 0x1000 }) = std.fifo.LinearFifo(u8, .{ .Static = 0x1000 }).init(),
 
         const ParseFailure = union(enum) {
@@ -60,7 +60,6 @@ pub fn Stream(comptime Reader: type) type {
             ctx: *Self,
             kind: ElementType,
 
-            first_char: u8,
             element_number: usize,
             stack_level: usize,
 
@@ -98,7 +97,6 @@ pub fn Stream(comptime Reader: type) type {
                 return Element{
                     .ctx = ctx,
                     .kind = kind,
-                    .first_char = byte,
                     .element_number = ctx.element_number,
                     .stack_level = ctx.parser.stack.len,
                 };
@@ -167,8 +165,8 @@ pub fn Stream(comptime Reader: type) type {
             }
 
             fn numberBuffer(self: Element, buffer: []u8) (Error || error{Overflow})![]u8 {
-                // Handle first byte manually
-                buffer[0] = self.first_char;
+                // First byte already went into the state machine parser
+                buffer[0] = self.ctx.peekPrevByte();
 
                 for (buffer[1..]) |*c, i| {
                     const byte = try self.ctx.nextByte();
@@ -581,6 +579,10 @@ pub fn Stream(comptime Reader: type) type {
             return .{ .ctx = ctx };
         }
 
+        fn peekPrevByte(ctx: *Self) u8 {
+            return ctx._back_fifo.peekItem(ctx._back_fifo.count - ctx._back_cursor - 1);
+        }
+
         fn nextByte(ctx: *Self) Error!u8 {
             const block_size = 16;
 
@@ -601,8 +603,7 @@ pub fn Stream(comptime Reader: type) type {
             }
 
             defer ctx._back_cursor -= 1;
-            const tail = ctx._back_fifo.readableSlice(0);
-            return tail[tail.len - ctx._back_cursor];
+            return ctx._back_fifo.peekItem(ctx._back_fifo.count - ctx._back_cursor);
         }
 
         // A simpler feed() to enable one liners.
