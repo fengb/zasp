@@ -5,7 +5,6 @@ const util = @import("util.zig");
 pub const path = @import("json/path.zig");
 
 const log = std.log.scoped(.zasp);
-const debug_buffer = builtin.mode == .Debug;
 
 pub fn Formatter(comptime T: type) type {
     return struct {
@@ -28,15 +27,6 @@ pub fn stream(reader: anytype) Stream(@TypeOf(reader)) {
     return .{
         .reader = reader,
         .parser = std.json.StreamingParser.init(),
-
-        .element_number = 0,
-        .parse_failure = null,
-
-        ._root = null,
-        ._debug_cursor = null,
-        ._debug_buffer = if (debug_buffer)
-            std.fifo.LinearFifo(u8, .{ .Static = 0x100 }).init()
-        else {},
     };
 }
 
@@ -47,15 +37,12 @@ pub fn Stream(comptime Reader: type) type {
         reader: Reader,
         parser: std.json.StreamingParser,
 
-        element_number: usize,
-        parse_failure: ?ParseFailure,
+        element_number: usize = 0,
+        parse_failure: ?ParseFailure = null,
 
-        _root: ?Element,
-        _debug_cursor: ?usize,
-        _debug_buffer: if (debug_buffer)
-            std.fifo.LinearFifo(u8, .{ .Static = 0x100 })
-        else
-            void,
+        _root: ?Element = null,
+        _back_cursor: u8 = 0,
+        _back_fifo: std.fifo.LinearFifo(u8, .{ .Static = 0x1000 }) = std.fifo.LinearFifo(u8, .{ .Static = 0x1000 }).init(),
 
         const ParseFailure = union(enum) {
             wrong_element: struct { wanted: ElementType, actual: ElementType },
@@ -570,32 +557,18 @@ pub fn Stream(comptime Reader: type) type {
             pub fn format(self: DebugInfo, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
                 _ = fmt;
                 _ = options;
-                if (debug_buffer) {
-                    if (self.ctx._debug_cursor == null) {
-                        self.ctx._debug_cursor = 0;
 
-                        var i: usize = 0;
-                        while (self.ctx.nextByte()) |byte| {
-                            i += 1;
-                            if (i > 30) break;
-                            switch (byte) {
-                                '"', ',', ' ', '\t', '\n' => {
-                                    self.ctx._debug_buffer.count -= 1;
-                                    break;
-                                },
-                                else => {},
-                            }
-                        } else |_| {}
-                    }
+                // TODO: ingest some additional bytes
 
-                    var copy = self.ctx._debug_buffer;
-                    const reader = copy.reader();
-
-                    var buf: [0x100]u8 = undefined;
-                    const size = try reader.read(&buf);
-                    try writer.writeAll(buf[0..size]);
-                    try writer.writeByte('\n');
+                const fifo = &self.ctx._back_fifo;
+                if (fifo.head + fifo.count <= fifo.buf.len) {
+                    try writer.writeAll(fifo.buf[fifo.head..][0..fifo.count]);
+                } else {
+                    try writer.writeAll(fifo.buf[fifo.head..]);
+                    const remaining = fifo.count - fifo.head;
+                    try writer.writeAll(fifo.buf[0..remaining]);
                 }
+
                 if (self.ctx.parse_failure) |parse_failure| switch (parse_failure) {
                     .wrong_element => |wrong_element| {
                         try writer.print("WrongElementType - wanted: {s}", .{@tagName(wrong_element.wanted)});
@@ -609,20 +582,27 @@ pub fn Stream(comptime Reader: type) type {
         }
 
         fn nextByte(ctx: *Self) Error!u8 {
-            const byte = ctx.reader.readByte() catch |err| switch (err) {
-                error.EndOfStream => return error.UnexpectedEndOfJson,
-                else => |e| return e,
-            };
+            const block_size = 16;
 
-            if (debug_buffer) {
-                if (ctx._debug_buffer.writableLength() == 0) {
-                    ctx._debug_buffer.discard(1);
-                    std.debug.assert(ctx._debug_buffer.writableLength() == 1);
+            if (ctx._back_cursor == 0) {
+                var write_size: usize = block_size;
+                if (ctx._back_fifo.writableLength() < write_size) {
+                    write_size -= ctx._back_fifo.writableLength();
+                    ctx._back_fifo.discard(write_size);
                 }
-                ctx._debug_buffer.writeAssumeCapacity(&[_]u8{byte});
+
+                const buf = ctx._back_fifo.writableSlice(0)[0..write_size];
+                const read = ctx.reader.read(buf) catch |err| switch (err) {
+                    error.EndOfStream => return error.UnexpectedEndOfJson,
+                    else => |e| return e,
+                };
+                ctx._back_fifo.update(read);
+                ctx._back_cursor = @intCast(u8, read);
             }
 
-            return byte;
+            defer ctx._back_cursor -= 1;
+            const tail = ctx._back_fifo.readableSlice(0);
+            return tail[tail.len - ctx._back_cursor];
         }
 
         // A simpler feed() to enable one liners.
