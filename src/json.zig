@@ -6,6 +6,8 @@ pub const path = @import("json/path.zig");
 
 const log = std.log.scoped(.zasp);
 
+const fifo_block_size = 16;
+
 pub fn Formatter(comptime T: type) type {
     return struct {
         data: T,
@@ -30,6 +32,12 @@ pub fn stream(reader: anytype) Stream(@TypeOf(reader)) {
     };
 }
 
+pub const StreamState = struct {
+    parser: std.json.StreamingParser,
+    element_number: usize,
+    count: usize,
+};
+
 pub fn Stream(comptime Reader: type) type {
     return struct {
         const Self = @This();
@@ -39,6 +47,7 @@ pub fn Stream(comptime Reader: type) type {
 
         // Helper for determining parse state validity
         element_number: usize = 0,
+        count: usize = 0,
         // TODO: add more reasons for failure (parse error, etc)
         parse_failure: ?ParseFailure = null,
 
@@ -521,6 +530,27 @@ pub fn Stream(comptime Reader: type) type {
             return self._root.?;
         }
 
+        pub fn save(self: Self) StreamState {
+            return .{
+                .parser = self.parser,
+                .element_number = self.element_number,
+                .count = self.count,
+            };
+        }
+
+        pub fn restore(self: *Self, state: StreamState) error{NoSpaceLeft}!void {
+            const new_back_cursor = self.count - state.count + self._back_cursor;
+            if (new_back_cursor > self._back_fifo.buf.len) {
+                return error.NoSpaceLeft;
+            }
+
+            self.parser = state.parser;
+            self.element_number = state.element_number;
+            self.count = state.count;
+
+            self._back_cursor = new_back_cursor;
+        }
+
         pub fn format(ctx: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
             _ = ctx;
             _ = fmt;
@@ -588,10 +618,8 @@ pub fn Stream(comptime Reader: type) type {
         }
 
         fn nextByte(ctx: *Self) Error!u8 {
-            const block_size = 16;
-
             if (ctx._back_cursor == 0) {
-                var write_size: usize = block_size;
+                var write_size: usize = fifo_block_size;
                 if (ctx._back_fifo.writableLength() < write_size) {
                     write_size -= ctx._back_fifo.writableLength();
                     ctx._back_fifo.discard(write_size);
@@ -613,6 +641,7 @@ pub fn Stream(comptime Reader: type) type {
         // A simpler feed() to enable one liners.
         // token2 can only be close object/array and we don't need it
         fn feed(ctx: *Self, byte: u8) !?std.json.Token {
+            ctx.count += 1;
             var token1: ?std.json.Token = undefined;
             var token2: ?std.json.Token = undefined;
             try ctx.parser.feed(byte, &token1, &token2);
@@ -1132,6 +1161,96 @@ test "finalizeToken on number" {
     try expectEqual(try second.finalizeToken(), null);
     try expectEqual(try second.finalizeToken(), null);
     try expectEqual(try second.finalizeToken(), null);
+}
+
+test "save/restore arrays" {
+    var fbs = std.io.fixedBufferStream("[[1234, 5678]]");
+    var str = stream(fbs.reader());
+
+    const root = try str.root();
+    try expectEqual(root.kind, .Array);
+
+    const inner = (try root.arrayNext()).?;
+    try expectEqual(inner.kind, .Array);
+
+    const state = str.save();
+
+    {
+        const first = (try inner.arrayNext()).?;
+        try expectEqual(try first.number(u32), 1234);
+        const second = (try inner.arrayNext()).?;
+        try expectEqual(try second.number(u32), 5678);
+    }
+
+    try str.restore(state);
+    {
+        const first = (try inner.arrayNext()).?;
+        try expectEqual(try first.number(u32), 1234);
+        const second = (try inner.arrayNext()).?;
+        try expectEqual(try second.number(u32), 5678);
+    }
+
+    try str.restore(state);
+    {
+        const first = (try inner.arrayNext()).?;
+        try expectEqual(try first.number(u32), 1234);
+    }
+
+    try str.restore(state);
+    {
+        const first = (try inner.arrayNext()).?;
+        try expectEqual(try first.number(u32), 1234);
+        const second = (try inner.arrayNext()).?;
+        try expectEqual(try second.number(u32), 5678);
+    }
+}
+
+test "save/restore objects" {
+    var fbs = std.io.fixedBufferStream(
+        \\[{ "foo": 69, "bar": 420 }]
+    );
+    var str = stream(fbs.reader());
+
+    const root = try str.root();
+    try expectEqual(root.kind, .Array);
+
+    const inner = (try root.arrayNext()).?;
+    try expectEqual(inner.kind, .Object);
+
+    const state = str.save();
+
+    {
+        const match = (try inner.objectMatchOne("foo")).?;
+        try expectEqual(try match.value.number(u32), 69);
+
+        try expectEqual(try inner.objectMatchOne("foo"), null);
+        try expectEqual(try inner.objectMatchOne("bar"), null);
+    }
+
+    try str.restore(state);
+    {
+        const match = (try inner.objectMatchOne("bar")).?;
+        try expectEqual(try match.value.number(u32), 420);
+
+        try expectEqual(try inner.objectMatchOne("foo"), null);
+        try expectEqual(try inner.objectMatchOne("bar"), null);
+    }
+
+    try str.restore(state);
+    {
+        try expectEqual(try inner.objectMatchOne("banana"), null);
+        try expectEqual(try inner.objectMatchOne("foo"), null);
+        try expectEqual(try inner.objectMatchOne("bar"), null);
+    }
+
+    try str.restore(state);
+    {
+        const match = (try inner.objectMatchOne("foo")).?;
+        try expectEqual(try match.value.number(u32), 69);
+
+        const match2 = (try inner.objectMatchOne("bar")).?;
+        try expectEqual(try match2.value.number(u32), 420);
+    }
 }
 
 test {
