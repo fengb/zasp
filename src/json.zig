@@ -892,25 +892,22 @@ test "array of simple values" {
 
     const root = try str.root();
     try expectEqual(root.kind, .Array);
-    if (try root.arrayNext()) |item| {
+    {
+        const item = (try root.arrayNext()) orelse return error.ExpectedValue;
         try expectEqual(item.kind, .Boolean);
         try expectEqual(try item.boolean(), false);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
-    if (try root.arrayNext()) |item| {
+    {
+        const item = (try root.arrayNext()) orelse return error.ExpectedValue;
         try expectEqual(item.kind, .Boolean);
         try expectEqual(try item.boolean(), true);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
-    if (try root.arrayNext()) |item| {
+    {
+        const item = (try root.arrayNext()) orelse return error.ExpectedValue;
         try expectEqual(item.kind, .Null);
         try expectEqual(try item.optionalBoolean(), null);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
     try expectEqual(try root.arrayNext(), null);
@@ -923,25 +920,22 @@ test "array of numbers" {
     const root = try str.root();
     try expectEqual(root.kind, .Array);
 
-    if (try root.arrayNext()) |item| {
+    {
+        const item = (try root.arrayNext()) orelse return error.ExpectedValue;
         try expectEqual(item.kind, .Number);
         try expectEqual(try item.number(u8), 1);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
-    if (try root.arrayNext()) |item| {
+    {
+        const item = (try root.arrayNext()) orelse return error.ExpectedValue;
         try expectEqual(item.kind, .Number);
         try expectEqual(try item.number(u8), 2);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
-    if (try root.arrayNext()) |item| {
+    {
+        const item = (try root.arrayNext()) orelse return error.ExpectedValue;
         try expectEqual(item.kind, .Number);
         try expectEqual(try item.number(i8), -3);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
     try expectEqual(try root.arrayNext(), null);
@@ -956,20 +950,17 @@ test "array of strings" {
     const root = try str.root();
     try expectEqual(root.kind, .Array);
 
-    if (try root.arrayNext()) |item| {
-        var buffer: [100]u8 = undefined;
+    var buffer: [100]u8 = undefined;
+    {
+        const item = (try root.arrayNext()) orelse return error.ExpectedValue;
         try expectEqual(item.kind, .String);
         try std.testing.expectEqualSlices(u8, "hello", try item.stringBuffer(&buffer));
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
-    if (try root.arrayNext()) |item| {
-        var buffer: [100]u8 = undefined;
+    {
+        const item = (try root.arrayNext()) orelse return error.ExpectedValue;
         try expectEqual(item.kind, .String);
         try std.testing.expectEqualSlices(u8, "world", try item.stringBuffer(&buffer));
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
     try expectEqual(try root.arrayNext(), null);
@@ -1021,20 +1012,18 @@ test "object next" {
     try expectEqual(root.kind, .Object);
 
     var key_buffer: [0x100]u8 = undefined;
-    if (try root.objectNextBuffer(&key_buffer)) |match| {
+    {
+        const match = (try root.objectNextBuffer(&key_buffer)) orelse return error.ExpectedValue;
         try std.testing.expectEqualSlices(u8, "foo", match.key);
         try expectEqual(match.value.kind, .Boolean);
         try expectEqual(try match.value.boolean(), true);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
-    if (try root.objectNextBuffer(&key_buffer)) |match| {
+    {
+        const match = (try root.objectNextBuffer(&key_buffer)) orelse return error.ExpectedValue;
         try std.testing.expectEqualSlices(u8, "bar", match.key);
         try expectEqual(match.value.kind, .Boolean);
         try expectEqual(try match.value.boolean(), false);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
     try expectEqual(try root.objectNextBuffer(&key_buffer), null);
@@ -1049,20 +1038,18 @@ test "object match" {
     const root = try str.root();
     try expectEqual(root.kind, .Object);
 
-    if (try root.objectMatchOne("foo")) |match| {
+    {
+        const match = (try root.objectMatchOne("foo")) orelse return error.ExpectedValue;
         try std.testing.expectEqualSlices(u8, "foo", match.key);
         try expectEqual(match.value.kind, .Boolean);
         try expectEqual(try match.value.boolean(), true);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
-    if (try root.objectMatchOne("bar")) |match| {
+    {
+        const match = (try root.objectMatchOne("bar")) orelse return error.ExpectedValue;
         try std.testing.expectEqualSlices(u8, "bar", match.key);
         try expectEqual(match.value.kind, .Boolean);
         try expectEqual(try match.value.boolean(), false);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 }
 
@@ -1075,20 +1062,18 @@ test "object match any" {
     const root = try str.root();
     try expectEqual(root.kind, .Object);
 
-    if (try root.objectMatchAny(&[_][]const u8{ "foobar", "foo" })) |match| {
+    {
+        const match = (try root.objectMatchAny(&[_][]const u8{ "foobar", "foo" })) orelse return error.ExpectedValue;
         try std.testing.expectEqualSlices(u8, "foo", match.key);
         try expectEqual(match.value.kind, .Boolean);
         try expectEqual(try match.value.boolean(), true);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
-    if (try root.objectMatchAny(&[_][]const u8{ "foo", "foobar" })) |match| {
+    {
+        const match = (try root.objectMatchAny(&[_][]const u8{ "foo", "foobar" })) orelse return error.ExpectedValue;
         try std.testing.expectEqualSlices(u8, "foobar", match.key);
         try expectEqual(match.value.kind, .Boolean);
         try expectEqual(try match.value.boolean(), false);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 }
 
@@ -1101,20 +1086,18 @@ test "object match" {
     const root = try str.root();
     try expectEqual(root.kind, .Object);
 
-    if (try root.objectMatch(enum { foobar, foo })) |match| {
+    {
+        const match = (try root.objectMatch(enum { foobar, foo })) orelse return error.ExpectedValue;
         try expectEqual(match.key, .foo);
         try expectEqual(match.value.kind, .Boolean);
         try expectEqual(try match.value.boolean(), true);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 
-    if (try root.objectMatch(enum { foo, foobar })) |match| {
+    {
+        const match = (try root.objectMatch(enum { foo, foobar })) orelse return error.ExpectedValue;
         try expectEqual(match.key, .foobar);
         try expectEqual(match.value.kind, .Boolean);
         try expectEqual(try match.value.boolean(), false);
-    } else {
-        std.debug.panic("Expected a value", .{});
     }
 }
 
