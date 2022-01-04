@@ -215,7 +215,7 @@ pub fn Stream(comptime Reader: type) type {
                 Error,
                 (struct {
                     fn read(self: Element, buffer: []u8) Error!usize {
-                        if (self.ctx.parser.state == .ValueEnd or self.ctx.parser.state == .TopLevelEnd) {
+                        if (self.ctx.parser.state != .String) {
                             return 0;
                         }
 
@@ -341,10 +341,38 @@ pub fn Stream(comptime Reader: type) type {
                 unreachable;
             }
 
-            const ObjectMatchString = struct {
-                key: []const u8,
-                value: Element,
-            };
+            const ObjectMatchString = ObjectMatch([]const u8);
+
+            pub fn objectNextBuffer(self: Element, key_buffer: []u8) (Error || error{StreamTooLong})!?ObjectMatchString {
+                try self.validateType(.Object);
+
+                // This object has been closed out.
+                // TODO: evaluate to see if this is actually robust
+                if (self.ctx.parser.stack.len < self.stack_level) {
+                    return null;
+                }
+
+                // Scan for next element
+                while (self.ctx.parser.state == .ValueEnd) {
+                    if (try self.ctx.feed(try self.ctx.nextByte())) |token| {
+                        self.ctx.assert(token == .ObjectEnd);
+                        return null;
+                    }
+                }
+
+                const key_element = (try Element.init(self.ctx)) orelse return null;
+                const key = try key_element.stringBuffer(key_buffer);
+
+                // Skip over the colon
+                while (self.ctx.parser.state == .ObjectSeparator) {
+                    _ = try self.ctx.feed(try self.ctx.nextByte());
+                }
+
+                return ObjectMatchString{
+                    .key = key,
+                    .value = (try Element.init(self.ctx)).?,
+                };
+            }
 
             pub fn objectMatchOne(self: Element, key: []const u8) Error!?ObjectMatchString {
                 return self.objectMatchAny(&[_][]const u8{key});
@@ -983,6 +1011,35 @@ test "empty object" {
     try expectEqual(try root.objectMatchOne(""), null);
 }
 
+test "object next" {
+    var fbs = std.io.fixedBufferStream(
+        \\{"foo": true, "bar": false}
+    );
+    var str = stream(fbs.reader());
+
+    const root = try str.root();
+    try expectEqual(root.kind, .Object);
+
+    var key_buffer: [0x100]u8 = undefined;
+    if (try root.objectNextBuffer(&key_buffer)) |match| {
+        try std.testing.expectEqualSlices(u8, "foo", match.key);
+        try expectEqual(match.value.kind, .Boolean);
+        try expectEqual(try match.value.boolean(), true);
+    } else {
+        std.debug.panic("Expected a value", .{});
+    }
+
+    if (try root.objectNextBuffer(&key_buffer)) |match| {
+        try std.testing.expectEqualSlices(u8, "bar", match.key);
+        try expectEqual(match.value.kind, .Boolean);
+        try expectEqual(try match.value.boolean(), false);
+    } else {
+        std.debug.panic("Expected a value", .{});
+    }
+
+    try expectEqual(try root.objectNextBuffer(&key_buffer), null);
+}
+
 test "object match" {
     var fbs = std.io.fixedBufferStream(
         \\{"foo": true, "bar": false}
@@ -1073,13 +1130,13 @@ test "object match not found" {
     try expectEqual(try root.objectMatchOne("???"), null);
 }
 
-fn expectElement(e: anytype) Stream(std.io.FixedBufferStream([]const u8).Reader).Error!void {
+fn expectValidElement(e: anytype) Stream(std.io.FixedBufferStream([]const u8).Reader).Error!void {
     switch (e.kind) {
         // TODO: test objects better
         .Object => _ = try e.finalizeToken(),
         .Array => {
             while (try e.arrayNext()) |child| {
-                try expectElement(child);
+                try expectValidElement(child);
             }
         },
         .String => _ = try e.finalizeToken(),
@@ -1096,7 +1153,7 @@ fn expectValidParseOutput(input: []const u8) !void {
     var str = stream(fbs.reader());
 
     const root = try str.root();
-    try expectElement(root);
+    try expectValidElement(root);
 }
 
 test "smoke" {
