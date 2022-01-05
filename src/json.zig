@@ -480,25 +480,21 @@ pub fn Stream(comptime Reader: type) type {
             }
 
             /// Dump the rest of this element into a writer.
-            /// Warning: this consumes the stream contents.
             pub fn debugDump(self: Element, writer: anytype) !void {
-                const Context = struct {
-                    element: Element,
-                    writer: @TypeOf(writer),
+                const state = self.ctx.save();
+                errdefer self.ctx.restore(state) catch {};
 
-                    pub fn feed(s: @This(), byte: u8) !?std.json.Token {
-                        try s.writer.writeByte(byte);
-                        return try s.element.ctx.feed(byte);
-                    }
-                };
-                _ = try self.finalizeTokenWithCustomFeeder(Context{ .element = self, .writer = writer });
+                try writer.writeByte(self.ctx.peekPrevByte());
+                _ = try self.finalizeTokenWriter(writer);
+
+                try self.ctx.restore(state);
             }
 
             pub fn finalizeToken(self: Element) Error!?std.json.Token {
-                return self.finalizeTokenWithCustomFeeder(self.ctx);
+                return self.finalizeTokenWriter(null);
             }
 
-            fn finalizeTokenWithCustomFeeder(self: Element, feeder: anytype) !?std.json.Token {
+            fn finalizeTokenWriter(self: Element, writer: anytype) !?std.json.Token {
                 switch (self.kind) {
                     .Boolean, .Null, .Number, .String => {
                         self.ctx.assert(self.element_number == self.ctx.element_number);
@@ -520,7 +516,13 @@ pub fn Stream(comptime Reader: type) type {
 
                 while (true) {
                     const byte = try self.ctx.nextByte();
-                    if (try feeder.feed(byte)) |token| {
+                    if (try self.ctx.feed(byte)) |token| {
+                        if (@TypeOf(writer) != @TypeOf(null)) {
+                            // Number termination feeds in an extra byte
+                            if (self.kind != .Number) {
+                                try writer.writeByte(byte);
+                            }
+                        }
                         switch (self.kind) {
                             .Boolean => self.ctx.assert(token == .True or token == .False),
                             .Null => self.ctx.assert(token == .Null),
@@ -546,6 +548,10 @@ pub fn Stream(comptime Reader: type) type {
                             },
                         }
                         return token;
+                    } else {
+                        if (@TypeOf(writer) != @TypeOf(null)) {
+                            try writer.writeByte(byte);
+                        }
                     }
                 }
             }
@@ -1221,6 +1227,72 @@ test "save/restore arrays" {
         try expectEqual(try first.number(u32), 1234);
         const second = (try inner.arrayNext()).?;
         try expectEqual(try second.number(u32), 5678);
+    }
+}
+
+test "debug dump" {
+    var fbs = std.io.fixedBufferStream(
+        \\["foo", 1, false, null, [0], {}]
+    );
+    var str = stream(fbs.reader());
+
+    const root = try str.root();
+    try expectEqual(root.kind, .Array);
+
+    var buf: [0x100]u8 = undefined;
+    var dump = std.io.fixedBufferStream(&buf);
+
+    {
+        const item = (try root.arrayNext()).?;
+        defer _ = item.finalizeToken() catch unreachable;
+
+        dump.reset();
+        try item.debugDump(dump.writer());
+        try std.testing.expectEqualStrings("\"foo\"", dump.getWritten());
+
+        dump.reset();
+        try item.debugDump(dump.writer());
+        try std.testing.expectEqualStrings("\"foo\"", dump.getWritten());
+    }
+    {
+        const item = (try root.arrayNext()).?;
+        defer _ = item.finalizeToken() catch unreachable;
+
+        dump.reset();
+        try item.debugDump(dump.writer());
+        try std.testing.expectEqualStrings("1", dump.getWritten());
+    }
+    {
+        const item = (try root.arrayNext()).?;
+        defer _ = item.finalizeToken() catch unreachable;
+
+        dump.reset();
+        try item.debugDump(dump.writer());
+        try std.testing.expectEqualStrings("false", dump.getWritten());
+    }
+    {
+        const item = (try root.arrayNext()).?;
+        defer _ = item.finalizeToken() catch unreachable;
+
+        dump.reset();
+        try item.debugDump(dump.writer());
+        try std.testing.expectEqualStrings("null", dump.getWritten());
+    }
+    {
+        const item = (try root.arrayNext()).?;
+        defer _ = item.finalizeToken() catch unreachable;
+
+        dump.reset();
+        try item.debugDump(dump.writer());
+        try std.testing.expectEqualStrings("[0]", dump.getWritten());
+    }
+    {
+        const item = (try root.arrayNext()).?;
+        defer _ = item.finalizeToken() catch unreachable;
+
+        dump.reset();
+        try item.debugDump(dump.writer());
+        try std.testing.expectEqualStrings("{}", dump.getWritten());
     }
 }
 
