@@ -425,30 +425,33 @@ pub fn Stream(comptime Reader: type) type {
 
                 var last_byte: u8 = undefined;
                 var prev_match: []const u8 = &[0]u8{};
-                var tail: usize = 0;
+                var parsed_len: usize = 0;
                 var string_complete = false;
 
                 for (checks) |check| {
-                    if (string_complete and std.mem.eql(u8, check, prev_match[0 .. tail - 1])) {
+                    if (string_complete and std.mem.eql(u8, check, prev_match[0 .. parsed_len - 1])) {
                         return check;
                     }
 
-                    if (tail >= 2 and !std.mem.eql(u8, check[0 .. tail - 2], prev_match[0 .. tail - 2])) {
+                    if (parsed_len > check.len) {
                         continue;
                     }
-                    if (tail >= 1 and (tail - 1 >= check.len or check[tail - 1] != last_byte)) {
+                    if (parsed_len >= 2 and !std.mem.eql(u8, check[0 .. parsed_len - 2], prev_match[0 .. parsed_len - 2])) {
+                        continue;
+                    }
+                    if (parsed_len >= 1 and (parsed_len - 1 >= check.len or check[parsed_len - 1] != last_byte)) {
                         continue;
                     }
 
                     prev_match = check;
-                    while (!string_complete and tail <= check.len and
-                        (tail < 1 or check[tail - 1] == last_byte)) : (tail += 1)
+                    while (!string_complete and parsed_len <= check.len and
+                        (parsed_len < 1 or check[parsed_len - 1] == last_byte)) : (parsed_len += 1)
                     {
                         last_byte = try self.ctx.nextByte();
                         if (try self.ctx.feed(last_byte)) |token| {
                             self.ctx.assert(token == .String);
                             string_complete = true;
-                            if (tail == check.len) {
+                            if (parsed_len == check.len) {
                                 return check;
                             }
                         }
@@ -1062,6 +1065,18 @@ test "object match any" {
         try std.testing.expectEqualSlices(u8, "foobar", match.key);
         try expectEqual(try match.value.boolean(), false);
     }
+}
+
+test "object match long match fail" {
+    var fbs = std.io.fixedBufferStream(
+        \\{"foobar": false}
+    );
+    var str = stream(fbs.reader());
+
+    const root = try str.root();
+    try expectEqual(root.kind, .Object);
+
+    try expectEqual(try root.objectMatchAny(&[_][]const u8{ "foobaz", "foo" }), null);
 }
 
 test "object match" {
