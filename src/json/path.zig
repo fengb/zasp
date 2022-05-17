@@ -503,7 +503,7 @@ fn RequiredMatches(comptime T: type) type {
     for (std.meta.fields(T)) |field| {
         if (@typeInfo(field.field_type) != .Optional) {
             required_fields = required_fields ++ [_]std.builtin.TypeInfo.StructField{
-                .{ .name = field.name, .field_type = bool, .default_value = false, .is_comptime = false, .alignment = 1 },
+                .{ .name = field.name, .field_type = bool, .default_value = &false, .is_comptime = false, .alignment = 1 },
             };
         }
     }
