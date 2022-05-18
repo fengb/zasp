@@ -656,11 +656,11 @@ pub fn Stream(comptime Reader: type) type {
 
         fn nextByte(ctx: *Self) Error!u8 {
             if (ctx._back_cursor == 0) {
-                var write_size: usize = fifo_block_size;
-                if (ctx._back_fifo.writableLength() < write_size) {
-                    write_size -= ctx._back_fifo.writableLength();
-                    ctx._back_fifo.discard(write_size);
+                if (ctx._back_fifo.writableLength() == 0) {
+                    ctx._back_fifo.discard(fifo_block_size);
                 }
+
+                const write_size = std.math.min(ctx._back_fifo.writableLength(), fifo_block_size);
 
                 const buf = ctx._back_fifo.writableSlice(0)[0..write_size];
                 const read = ctx.reader.read(buf) catch |err| switch (err) {
