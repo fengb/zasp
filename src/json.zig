@@ -210,6 +210,13 @@ pub fn Stream(comptime Reader: type) type {
                 return buffer[0..size];
             }
 
+            pub fn stringBoundedArray(self: Element, comptime max_size: usize) (Error || error{StreamTooLong})!std.BoundedArray(u8, max_size) {
+                var result: std.BoundedArray(u8, max_size) = undefined;
+                const string = try self.stringBuffer(&result.buffer);
+                result.len = string.len;
+                return result;
+            }
+
             const StringReader = std.io.Reader(
                 Element,
                 Error,
@@ -296,6 +303,14 @@ pub fn Stream(comptime Reader: type) type {
                     return null;
                 } else {
                     return try self.stringBuffer(buffer);
+                }
+            }
+
+            pub fn optionalStringBoundedArray(self: Element, comptime max_size: usize) (Error || error{StreamTooLong})!?std.BoundedArray(u8, max_size) {
+                if (try self.checkOptional()) {
+                    return null;
+                } else {
+                    return try self.stringBoundedArray(max_size);
                 }
             }
 
