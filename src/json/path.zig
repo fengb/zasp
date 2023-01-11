@@ -97,15 +97,15 @@ test "simple match" {
     try expectEqual(root.kind, .Object);
 
     const m = try matchAlloc(std.testing.allocator, root, struct {
-        @"foo": bool,
-        @"bar": u32,
-        @"baz": []const u8,
+        foo: bool,
+        bar: u32,
+        baz: []const u8,
     });
     defer freeMatch(std.testing.allocator, m);
 
-    try expectEqual(m.@"foo", true);
-    try expectEqual(m.@"bar", 2);
-    try std.testing.expectEqualStrings(m.@"baz", "nop");
+    try expectEqual(m.foo, true);
+    try expectEqual(m.bar, 2);
+    try std.testing.expectEqualStrings(m.baz, "nop");
 }
 
 test "custom function" {
@@ -144,10 +144,10 @@ test "custom function" {
     };
 
     const m = try match(root, struct {
-        @"foo": Fruit,
+        foo: Fruit,
     });
 
-    try expectEqual(m.@"foo", .banana);
+    try expectEqual(m.foo, .banana);
 }
 
 test "nested" {
@@ -180,15 +180,15 @@ test "optionals" {
     try expectEqual(root.kind, .Object);
 
     const m = try matchAlloc(std.testing.allocator, root, struct {
-        @"foo": ?bool,
-        @"bar": ?u32,
-        @"baz": ?[]const u8,
+        foo: ?bool,
+        bar: ?u32,
+        baz: ?[]const u8,
     });
     defer freeMatch(std.testing.allocator, m);
 
-    try expectEqual(m.@"foo", null);
-    try expectEqual(m.@"bar", null);
-    try expectEqual(m.@"baz", null);
+    try expectEqual(m.foo, null);
+    try expectEqual(m.bar, null);
+    try expectEqual(m.baz, null);
 }
 
 test "requireds" {
@@ -199,9 +199,9 @@ test "requireds" {
     try expectEqual(root.kind, .Object);
 
     try std.testing.expectError(error.Required, matchAlloc(std.testing.allocator, root, struct {
-        @"foo": bool,
-        @"bar": u32,
-        @"baz": []const u8,
+        foo: bool,
+        bar: u32,
+        baz: []const u8,
     }));
 }
 
@@ -222,10 +222,10 @@ test "Wrap" {
     try expectEqual(root.kind, .Object);
 
     const m = try match(root, struct {
-        @"boss": Wrap([]const u8, imTheBoss),
+        boss: Wrap([]const u8, imTheBoss),
     });
 
-    try std.testing.expectEqualStrings("I'm the boss", m.@"boss".data);
+    try std.testing.expectEqualStrings("I'm the boss", m.boss.data);
 }
 
 const PathToken = union(enum) {
