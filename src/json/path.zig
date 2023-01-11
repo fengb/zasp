@@ -1,6 +1,5 @@
 const std = @import("std");
 const json = @import("../json.zig");
-const util = @import("../util.zig");
 
 pub fn Wrap(comptime T: type, comptime func: anytype) type {
     return struct {
@@ -19,11 +18,11 @@ pub fn match(json_element: anytype, comptime T: type) !T {
 
     var result: T = undefined;
     inline for (std.meta.fields(T)) |field| {
-        switch (field.field_type) {
+        switch (field.type) {
             []u8, []const u8, ?[]u8, ?[]const u8 => @compileError("Cannot match() on strings. Please use matchAlloc(), switch to BoundedArray(u8, nn), or write a custom parser."),
             else => {},
         }
-        if (@typeInfo(field.field_type) == .Optional) {
+        if (@typeInfo(field.type) == .Optional) {
             @field(result, field.name) = null;
         }
     }
@@ -40,12 +39,12 @@ pub fn match(json_element: anytype, comptime T: type) !T {
     return result;
 }
 
-pub fn matchAlloc(allocator: util.Allocator, json_element: anytype, comptime T: type) !T {
+pub fn matchAlloc(allocator: std.mem.Allocator, json_element: anytype, comptime T: type) !T {
     const ast = comptime try AstNode.init(T);
 
     var result: T = undefined;
     inline for (std.meta.fields(T)) |field| {
-        if (@typeInfo(field.field_type) == .Optional) {
+        if (@typeInfo(field.type) == .Optional) {
             @field(result, field.name) = null;
         }
     }
@@ -54,7 +53,7 @@ pub fn matchAlloc(allocator: util.Allocator, json_element: anytype, comptime T: 
 
     errdefer {
         inline for (std.meta.fields(@TypeOf(result))) |field| {
-            switch (field.field_type) {
+            switch (field.type) {
                 ?[]const u8, ?[]u8 => {
                     if (@field(result, field.name)) |str| {
                         allocator.free(str);
@@ -80,9 +79,9 @@ pub fn matchAlloc(allocator: util.Allocator, json_element: anytype, comptime T: 
     return result;
 }
 
-pub fn freeMatch(allocator: util.Allocator, value: anytype) void {
+pub fn freeMatch(allocator: std.mem.Allocator, value: anytype) void {
     inline for (std.meta.fields(@TypeOf(value))) |field| {
-        if (field.field_type == []const u8) {
+        if (field.type == []const u8) {
             allocator.free(@field(value, field.name));
         }
     }
@@ -98,15 +97,15 @@ test "simple match" {
     try expectEqual(root.kind, .Object);
 
     const m = try matchAlloc(std.testing.allocator, root, struct {
-        @"foo": bool,
-        @"bar": u32,
-        @"baz": []const u8,
+        foo: bool,
+        bar: u32,
+        baz: []const u8,
     });
     defer freeMatch(std.testing.allocator, m);
 
-    try expectEqual(m.@"foo", true);
-    try expectEqual(m.@"bar", 2);
-    try std.testing.expectEqualStrings(m.@"baz", "nop");
+    try expectEqual(m.foo, true);
+    try expectEqual(m.bar, 2);
+    try std.testing.expectEqualStrings(m.baz, "nop");
 }
 
 test "custom function" {
@@ -145,10 +144,10 @@ test "custom function" {
     };
 
     const m = try match(root, struct {
-        @"foo": Fruit,
+        foo: Fruit,
     });
 
-    try expectEqual(m.@"foo", .banana);
+    try expectEqual(m.foo, .banana);
 }
 
 test "nested" {
@@ -181,15 +180,15 @@ test "optionals" {
     try expectEqual(root.kind, .Object);
 
     const m = try matchAlloc(std.testing.allocator, root, struct {
-        @"foo": ?bool,
-        @"bar": ?u32,
-        @"baz": ?[]const u8,
+        foo: ?bool,
+        bar: ?u32,
+        baz: ?[]const u8,
     });
     defer freeMatch(std.testing.allocator, m);
 
-    try expectEqual(m.@"foo", null);
-    try expectEqual(m.@"bar", null);
-    try expectEqual(m.@"baz", null);
+    try expectEqual(m.foo, null);
+    try expectEqual(m.bar, null);
+    try expectEqual(m.baz, null);
 }
 
 test "requireds" {
@@ -200,9 +199,9 @@ test "requireds" {
     try expectEqual(root.kind, .Object);
 
     try std.testing.expectError(error.Required, matchAlloc(std.testing.allocator, root, struct {
-        @"foo": bool,
-        @"bar": u32,
-        @"baz": []const u8,
+        foo: bool,
+        bar: u32,
+        baz: []const u8,
     }));
 }
 
@@ -223,10 +222,10 @@ test "Wrap" {
     try expectEqual(root.kind, .Object);
 
     const m = try match(root, struct {
-        @"boss": Wrap([]const u8, imTheBoss),
+        boss: Wrap([]const u8, imTheBoss),
     });
 
-    try std.testing.expectEqualStrings("I'm the boss", m.@"boss".data);
+    try std.testing.expectEqualStrings("I'm the boss", m.boss.data);
 }
 
 const PathToken = union(enum) {
@@ -340,7 +339,7 @@ const AstNode = struct {
         var result = AstNode{ .initial_path = "" };
         for (std.meta.fields(T)) |field| {
             var tokenizer = PathToken.tokenize(field.name);
-            try result.insert(field.field_type, &tokenizer);
+            try result.insert(field.type, &tokenizer);
         }
         return result;
     }
@@ -423,13 +422,13 @@ const AstNode = struct {
             }
 
             if (!@hasField(T, "len") or
-                std.meta.fieldInfo(T, .len).field_type != usize)
+                std.meta.fieldInfo(T, .len).type != usize)
             {
                 return NotMatch;
             }
 
             if (!@hasField(T, "buffer") or
-                @typeInfo(std.meta.fieldInfo(T, .buffer).field_type) != .Array)
+                @typeInfo(std.meta.fieldInfo(T, .buffer).type) != .Array)
             {
                 return NotMatch;
             }
@@ -438,7 +437,7 @@ const AstNode = struct {
         }
     };
 
-    fn apply(comptime self: AstNode, allocator: ?util.Allocator, json_element: anytype, matches: anytype, result: anytype) !void {
+    fn apply(comptime self: AstNode, allocator: ?std.mem.Allocator, json_element: anytype, matches: anytype, result: anytype) !void {
         switch (self.data) {
             .empty => unreachable,
             .atom => |AtomType| {
@@ -499,11 +498,11 @@ const AstNode = struct {
 };
 
 fn RequiredMatches(comptime T: type) type {
-    var required_fields: []const std.builtin.TypeInfo.StructField = &.{};
+    var required_fields: []const std.builtin.Type.StructField = &.{};
     for (std.meta.fields(T)) |field| {
-        if (@typeInfo(field.field_type) != .Optional) {
-            required_fields = required_fields ++ [_]std.builtin.TypeInfo.StructField{
-                .{ .name = field.name, .field_type = bool, .default_value = &false, .is_comptime = false, .alignment = 1 },
+        if (@typeInfo(field.type) != .Optional) {
+            required_fields = required_fields ++ [_]std.builtin.Type.StructField{
+                .{ .name = field.name, .type = bool, .default_value = &false, .is_comptime = false, .alignment = 1 },
             };
         }
     }
