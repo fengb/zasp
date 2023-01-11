@@ -18,11 +18,11 @@ pub fn match(json_element: anytype, comptime T: type) !T {
 
     var result: T = undefined;
     inline for (std.meta.fields(T)) |field| {
-        switch (field.field_type) {
+        switch (field.type) {
             []u8, []const u8, ?[]u8, ?[]const u8 => @compileError("Cannot match() on strings. Please use matchAlloc(), switch to BoundedArray(u8, nn), or write a custom parser."),
             else => {},
         }
-        if (@typeInfo(field.field_type) == .Optional) {
+        if (@typeInfo(field.type) == .Optional) {
             @field(result, field.name) = null;
         }
     }
@@ -44,7 +44,7 @@ pub fn matchAlloc(allocator: std.mem.Allocator, json_element: anytype, comptime 
 
     var result: T = undefined;
     inline for (std.meta.fields(T)) |field| {
-        if (@typeInfo(field.field_type) == .Optional) {
+        if (@typeInfo(field.type) == .Optional) {
             @field(result, field.name) = null;
         }
     }
@@ -53,7 +53,7 @@ pub fn matchAlloc(allocator: std.mem.Allocator, json_element: anytype, comptime 
 
     errdefer {
         inline for (std.meta.fields(@TypeOf(result))) |field| {
-            switch (field.field_type) {
+            switch (field.type) {
                 ?[]const u8, ?[]u8 => {
                     if (@field(result, field.name)) |str| {
                         allocator.free(str);
@@ -81,7 +81,7 @@ pub fn matchAlloc(allocator: std.mem.Allocator, json_element: anytype, comptime 
 
 pub fn freeMatch(allocator: std.mem.Allocator, value: anytype) void {
     inline for (std.meta.fields(@TypeOf(value))) |field| {
-        if (field.field_type == []const u8) {
+        if (field.type == []const u8) {
             allocator.free(@field(value, field.name));
         }
     }
@@ -339,7 +339,7 @@ const AstNode = struct {
         var result = AstNode{ .initial_path = "" };
         for (std.meta.fields(T)) |field| {
             var tokenizer = PathToken.tokenize(field.name);
-            try result.insert(field.field_type, &tokenizer);
+            try result.insert(field.type, &tokenizer);
         }
         return result;
     }
@@ -422,13 +422,13 @@ const AstNode = struct {
             }
 
             if (!@hasField(T, "len") or
-                std.meta.fieldInfo(T, .len).field_type != usize)
+                std.meta.fieldInfo(T, .len).type != usize)
             {
                 return NotMatch;
             }
 
             if (!@hasField(T, "buffer") or
-                @typeInfo(std.meta.fieldInfo(T, .buffer).field_type) != .Array)
+                @typeInfo(std.meta.fieldInfo(T, .buffer).type) != .Array)
             {
                 return NotMatch;
             }
@@ -498,11 +498,11 @@ const AstNode = struct {
 };
 
 fn RequiredMatches(comptime T: type) type {
-    var required_fields: []const std.builtin.TypeInfo.StructField = &.{};
+    var required_fields: []const std.builtin.Type.StructField = &.{};
     for (std.meta.fields(T)) |field| {
-        if (@typeInfo(field.field_type) != .Optional) {
-            required_fields = required_fields ++ [_]std.builtin.TypeInfo.StructField{
-                .{ .name = field.name, .field_type = bool, .default_value = &false, .is_comptime = false, .alignment = 1 },
+        if (@typeInfo(field.type) != .Optional) {
+            required_fields = required_fields ++ [_]std.builtin.Type.StructField{
+                .{ .name = field.name, .type = bool, .default_value = &false, .is_comptime = false, .alignment = 1 },
             };
         }
     }

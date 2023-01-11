@@ -615,7 +615,7 @@ pub fn Stream(comptime Reader: type) type {
                     return;
                 }
             }
-            ctx.assertFailure("Unexpected state: {s}", .{ctx.parser.state});
+            ctx.assertFailure("Unexpected state: {}", .{ctx.parser.state});
         }
 
         fn assert(ctx: *Self, cond: bool) void {
