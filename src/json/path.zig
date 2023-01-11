@@ -1,6 +1,5 @@
 const std = @import("std");
 const json = @import("../json.zig");
-const util = @import("../util.zig");
 
 pub fn Wrap(comptime T: type, comptime func: anytype) type {
     return struct {
@@ -40,7 +39,7 @@ pub fn match(json_element: anytype, comptime T: type) !T {
     return result;
 }
 
-pub fn matchAlloc(allocator: util.Allocator, json_element: anytype, comptime T: type) !T {
+pub fn matchAlloc(allocator: std.mem.Allocator, json_element: anytype, comptime T: type) !T {
     const ast = comptime try AstNode.init(T);
 
     var result: T = undefined;
@@ -80,7 +79,7 @@ pub fn matchAlloc(allocator: util.Allocator, json_element: anytype, comptime T: 
     return result;
 }
 
-pub fn freeMatch(allocator: util.Allocator, value: anytype) void {
+pub fn freeMatch(allocator: std.mem.Allocator, value: anytype) void {
     inline for (std.meta.fields(@TypeOf(value))) |field| {
         if (field.field_type == []const u8) {
             allocator.free(@field(value, field.name));
@@ -438,7 +437,7 @@ const AstNode = struct {
         }
     };
 
-    fn apply(comptime self: AstNode, allocator: ?util.Allocator, json_element: anytype, matches: anytype, result: anytype) !void {
+    fn apply(comptime self: AstNode, allocator: ?std.mem.Allocator, json_element: anytype, matches: anytype, result: anytype) !void {
         switch (self.data) {
             .empty => unreachable,
             .atom => |AtomType| {
